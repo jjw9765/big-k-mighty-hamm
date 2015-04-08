@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<title>Big Kurt and the Mighty Hamm</title>
+	<link href='http://fonts.googleapis.com/css?family=Shadows+Into+Light' rel='stylesheet' type='text/css'>
+	<link href="css/bigkstyle.css" type="text/css" rel="stylesheet">
+	<!-- import scripts -->
+	<script src="scripts/utils.js"></script>
+	<script src="scripts/SpringEnemy.js"></script>
+	<script src="scripts/RocketEnemy.js"></script>
+	<script src="scripts/TankEnemy.js"></script>
+	<script src="scripts/TankBullet.js"></script>
+	<script src="scripts/Bean.js"></script>
+	<script src="scripts/Health.js"></script>
+	<script src="scripts/audio.js"></script>
+<script>
+	window.addEventListener("load", loadImages);
+	
+	"use strict";
+	
+	//CONSTANTS
+	var CANVAS_WIDTH = 1000;
+	var CANVAS_HEIGHT = 550;
+	var PIG_GROUND = 483;
+	var K_GROUND = 418;
+	var GRAVITY = 0.0004;
+	var JUMP_HEIGHT = 180;
+	var SPEED = 15;
+	var TANK_X = 0;
+	var TANK_Y = 0;
+	var SCORE = 0;
+	var BEANSCORE = 1;
+	var HIGHSCORE = 0;
+	var IMAGE_SOURCES = {
+		bigkImage: "images/bigKspriteSheet.gif",
+		hammImage: "images/pigSpritesheet.gif",
+		springEnemyImage: "images/springEnemySpriteSheet.png",
+		rocketEnemyImage: "images/rocketSheet3.png",
+		tankEnemyImage: "images/tanksSprites.png",
+		backgroundImage: "images/background.png",
+		heartImage: "images/heart.png",
+		pencilImage: "images/pencil.png",
+		beanImage: "images/bean.png",
+		logoImage: "images/logo.png",
+		healthImage: "images/pencilPower.png",
+		bulletImage: "images/bullet.png"
+	};
+	
+	var KEYBOARD = {
+		"KEY_LEFT": 37,
+		"KEY_UP": 38,
+		"KEY_RIGHT": 39,
+		"KEY_SPACE": 32,
+		"KEY_P": 80
+	};
+	var springenemies = [];
+	var rocketenemies = [];
+	var tankenemies = [];
+	var tankbullets = [];
+	var beans = [];
+	var pencils = [];
+	var SPRING_ENEMY_PROBABILITY_PER_SECOND = 0.1;
+	var ROCKET_ENEMY_PROBABILITY_PER_SECOND = 0.1;
+	var TANK_ENEMY_PROBABILITY_PER_SECOND = 0.1;
+	var BULLET_PROBABILITY_PER_SECOND = 0.1;
+	var BEANS_PROBABILITY_PER_SECOND = 0.1;
+	var PENCILS_PROBABILITY_PER_SECOND = 0.1;
+	var ACTIVE_TANK = false;
+	
+	
+	//GLOBALS
+	var healthbar = 5;
+	var ctx;
+	var bigk;
+	var hamm;
+	var paused;
+	var kJumped = false;
+	var pigJumped = false;
+	var kGravity = false;
+	var pGravity = false;
+	var lastTime = 0;
+	var counter = 0;
+	var gameStarted = false;
+	var onMenu = true;
+	var keydown = [];
+	var images = {};
+	
+	//HELPERS
+	/*
+	Function Name: calculateDeltaTime()
+	Author: Tony Jefferson
+	Return Value: time in seconds since function last called
+	Dependencies: Needs a global variable named lastTime
+	Description: this isn't the most efficcient way to do this,
+	but I think its more clear than other methods I've seen
+	*/
+	
+	function calculateDeltaTime() {
+		//what's with (+ new Date) below?
+		// + calls Date.valueOf(), which converts it from
+		//an object to a primitive (number of milliseconds
+		//since January 1, 1970)
+		var now, fps;
+		now = (+new Date);
+		fps = 1000 / (now - lastTime);
+		fps = clamp(fps, 12, 60);
+		lastTime = now;
+		return 1/fps;
+	}
+	
+	function drawScore(ctx){
+			//draw score
+			ctx.fillStyle = '#000';
+			ctx.font = 'bold 48px Shadows Into Light, cursive';
+			var scoreText = "Score: " + SCORE;
+			var scoreText2 = "x " + BEANSCORE;
+			var textSize = ctx.measureText(scoreText);
+			var xCoord = 550;
+			var yCoord = 50;
+			ctx.fillText (scoreText, xCoord, yCoord);
+			
+				beanx = 775;
+				beany = 35;
+				var halfW = 28/2;
+				var halfH = 39/2;
+				ctx.drawImage(images["beanImage"], 
+				beanx - halfW, beany - halfH, 28, 39);
+	}
+	
+	function drawScore2(ctx){
+			//draw score
+			ctx.fillStyle = '#000';
+			ctx.font = 'bold 48px Shadows Into Light, cursive';
+			var scoreText = "x " + BEANSCORE;
+			var textSize = ctx.measureText(scoreText);
+			var xCoord = 810;
+			var yCoord = 50;
+			ctx.fillText (scoreText, xCoord, yCoord);
+	}
+	
+	function loadImages(){
+		var numLoadedImages = 0;
+		var numImages = 0;
+		//get num of sources
+			for(var imageName in IMAGE_SOURCES) {
+			numImages++;
+			} //end for
+			
+		//load images
+		for(var imageName in IMAGE_SOURCES) {
+			for(var imageName in IMAGE_SOURCES) {
+				console.log("Started loading " + imageName);
+				images[imageName] = new Image(); //Image is a class
+				images[imageName].src = IMAGE_SOURCES[imageName];
+				
+				images[imageName].onload = function() {
+					console.log(this.src + " load complete");
+					if(++numLoadedImages >= numImages){
+						console.log("Done loading images");
+						init();
+						}
+				}; //end onload
+			} //end for
+		} //end loadImages
+	}
+	
+	function init(){
+		
+		var canvasElement = document.querySelector("canvas");
+		
+		canvasElement.width = CANVAS_WIDTH;
+		canvasElement.height = CANVAS_HEIGHT;
+		
+		//get a 2D rendering context
+		ctx = canvasElement.getContext("2d");
+		
+		//preload audio
+		audio.playBulletSound(0);
+		audio.playBoingSound(0);
+		audio.playMissileSound(0);
+		audio.playGameOver(0);
+		audio.playHurtOne(0);
+		audio.playHurtTwo(0);
+		audio.playHurtThree(0);
+		audio.playHurtFour(0);
+		audio.playEraserSound(0);
+		audio.playHeartSound(0);
+		
+		//event listeners
+		window.addEventListener("keydown", function(e){
+				
+				keydown[e.keyCode] = true;
+			});
+		
+		window.addEventListener("keyup", function(e){
+				keydown[e.keyCode] = false;
+			});
+		
+		
+		animate();
+		
+		//Start Background Music
+		audio.playBackgroundSound(.3);
+		
+		drawMainMenu();
+		console.log("DRAWN");
+		ctx.font = 'bold 36px Shadows Into Light, cursive';
+		ctx.fillStyle = '#000';
+		var text = "Start Game [P]";
+		ctx.fillText (text, 390, 350);
+		var text2 = "High Score: " + HIGHSCORE;
+		ctx.fillText(text2, 392, 430);
+		var text3 = "© John Watson and Kurt Stohrer 2013";
+		ctx.fillText(text3, 240, 510);
+	}
+	
+	function startGame(){
+		
+		
+		bigk = {
+			x: 200,
+			y: K_GROUND,
+			width: 100,
+			height: 100,
+			speed: SPEED,
+			velocityY: 0,
+			draw: function() { //relies on a global ctx variable
+				var count, frameNumber, xoff, yoff;
+				count = Math.floor(counter/600);
+				frameNumber = count % 3;
+				xoff = frameNumber * 100;
+				yoff = 0;
+				if(frameNumber > 10){
+					xoff = (frameNumber - 4) * 5;
+					yoff = 145;
+				
+				}
+				var halfW = this.width/2;
+				var halfH = this.height/2;
+				ctx.drawImage(images["bigkImage"], 
+				//0, 20, 110, 145,
+				xoff, 20, 110, 145,
+				this.x - halfW, this.y - halfH, this.width + 10, this.height + 45);
+				},//end draw() method
+			};
+			
+		hamm = {
+			x: 100,
+			y: PIG_GROUND,
+			width: 100,
+			height: 100,
+			speed: SPEED,
+			velocityY: 0,
+			draw: function() { //relies on a global ctx variable
+				var count,	frameNumber, xoff, yoff;
+				count = Math.floor(counter/600);
+				frameNumber = count % 4;
+				xoff = frameNumber * 100;
+				yoff = 0;
+				if(frameNumber > 10){
+					xoff = (frameNumber - 4) * 5;
+					yoff = 100;
+				}
+				var halfW = this.width/2;
+				var halfH = this.height/2;
+				ctx.drawImage(images["hammImage"], 
+				xoff, 20, 100, 100,
+				this.x - halfW, this.y - halfH, this.width, this.height);
+				}, //end draw() method
+		
+		       };
+		
+		heartone = {
+			x : 100,
+			y : 30,
+			width: 15,
+			height: 15,
+			draw: function() {
+				var halfW = this.width/2;
+				var halfH = this.height/2;
+				ctx.drawImage(images["heartImage"], this.x - halfW, this.y - halfH, this.width, this.height);
+			},
+
+		};
+		
+		hearttwo = {
+			x : 100,
+			y : 30,
+			width: 15,
+			height: 15,
+			draw: function() {
+				var halfW = this.width/2;
+				var halfH = this.height/2;
+				ctx.drawImage(images["heartImage"], (this.x + 30) - halfW, this.y - halfH, this.width, this.height);
+			},
+
+		};
+		
+		heartthree = {
+			x : 100,
+			y : 30,
+			width: 15,
+			height: 15,
+			draw: function() {
+				var halfW = this.width/2;
+				var halfH = this.height/2;
+				ctx.drawImage(images["heartImage"], (this.x + 60) - halfW, this.y - halfH, this.width, this.height);
+			},
+
+		};
+		
+		heartfour = {
+			x : 100,
+			y : 30,
+			width: 15,
+			height: 15,
+			draw: function() {
+				var halfW = this.width/2;
+				var halfH = this.height/2;
+				ctx.drawImage(images["heartImage"], (this.x + 90) - halfW, this.y - halfH, this.width, this.height);
+			},
+
+		};
+		
+		heartfive = {
+			x : 100,
+			y : 30,
+			width: 15,
+			height: 15,
+			draw: function() {
+				var halfW = this.width/2;
+				var halfH = this.height/2;
+				ctx.drawImage(images["heartImage"], (this.x + 120) - halfW, this.y - halfH, this.width, this.height);
+			},
+
+		};
+		
+		pencil = {
+			x: 10,
+			y: 13,
+			width:500,
+			height:35,
+			draw: function() {
+				ctx.drawImage(images["pencilImage"], this.x, this.y, this.width, this.height);
+			
+			},
+		
+		};
+			gameStarted = true;
+		}
+		
+		function animate() {
+		var dt = calculateDeltaTime();
+		
+		if(gameStarted == true) {
+			// 1) update sprites
+			update(dt);
+			
+			// 2) draw background
+			drawBackground();
+			
+			// 3) draw everything else
+			drawSprites();
+			
+			drawScore(ctx);
+			
+			drawScore2(ctx);
+		}
+		
+		if(onMenu == true)
+		{
+		mainMenuButtons();
+		}
+		//tell the browser to let us know when its ready to animate
+		//which is usually in 1/60 of a second
+		//animate is the function that will be "called back"
+		window.requestAnimFrame(animate);
+		handleCollisions();
+		}
+		
+		function mainMenuButtons(){
+			
+			if(keydown[KEYBOARD.KEY_P]){
+			startGame();
+			onMenu = false; 
+			SCORE = 0;
+			BEANSCORE = 1;
+			}
+		}
+		
+		function update(dt){
+		
+			//Big K Animation
+			counter++;
+			
+			if(keydown[KEYBOARD.KEY_LEFT] && bigk.x > 150){
+			bigk.x -= (bigk.speed - bigk.speed/1.5) * dt;
+			hamm.x -= (hamm.speed - hamm.speed/1.5) * dt;
+			}
+		
+			if(keydown[KEYBOARD.KEY_RIGHT] && bigk.x < 300){
+			bigk.x += (bigk.speed - bigk.speed/1.5) * dt;
+			hamm.x += (hamm.speed - hamm.speed/1.5) * dt;
+			}
+			
+			if((keydown[KEYBOARD.KEY_UP] || keydown[KEYBOARD.KEY_SPACE]) && pigJumped == false){
+			kJumped = true;
+			}
+			
+			if(kJumped == true)
+			{
+			bigk.y =  bigk.y - bigk.speed * dt;
+			
+			if(bigk.y < JUMP_HEIGHT)
+			{
+				kGravity = true;
+			}
+			
+			if(kGravity == true)
+			{
+			bigk.velocityY += GRAVITY;
+			bigk.y += bigk.velocityY;
+			}
+			
+			if(bigk.y < K_GROUND - 175)
+			{
+			pigJumped = true;
+			}
+			
+				if(bigk.y > K_GROUND)
+				{
+				kGravity = false;
+				bigk.y = K_GROUND;
+				bigk.velocityY = 0;
+				kJumped = false;
+				}
+			}
+			
+			if(pigJumped == true)
+			{
+			hamm.y = hamm.y - hamm.speed * dt;
+			
+			if(hamm.y < JUMP_HEIGHT)
+			{
+				pGravity = true;
+			}
+			
+			if(pGravity == true)
+			{
+			hamm.velocityY += GRAVITY;
+			hamm.y += hamm.velocityY;
+			}
+			
+				if(hamm.y > PIG_GROUND)
+				{
+				pGravity = false;
+				hamm.y = PIG_GROUND;
+				hamm.velocityY = 0;
+				pigJumped = false;
+				}
+			}
+			
+			springenemies.forEach(function(springenemy) {
+					springenemy.update(dt);
+				});
+				
+			rocketenemies.forEach(function(rocketenemy) {
+					rocketenemy.update(dt);
+				});
+				
+			tankenemies.forEach(function(tankenemy) {
+					tankenemy.update(dt);
+				});
+				
+			tankbullets.forEach(function(tankbullet) {
+					tankbullet.update(dt);
+				});
+				
+			beans.forEach(function(bean) {
+					bean.update(dt);
+				});
+				
+			pencils.forEach(function(health) {
+					health.update(dt);
+				});
+				
+				springenemies = springenemies.filter(function(springenemy) {
+					return springenemy.active;
+				});
+				
+				rocketenemies = rocketenemies.filter(function(rocketenemy) {
+					return rocketenemy.active;
+				});
+				
+				tankenemies = tankenemies.filter(function(tankenemy) {
+					return tankenemy.active;
+				});
+				
+				tankbullets = tankbullets.filter(function(tankbullet) {
+					return tankbullet.active;
+				});
+				
+				beans = beans.filter(function(bean) {
+					return bean.active;
+				});
+				
+				pencils = pencils.filter(function(health) {
+					return health.active;
+				});
+				
+				if(Math.random() < SPRING_ENEMY_PROBABILITY_PER_SECOND/1000) {
+				
+					var rand = Math.random() * 10;
+					if(rand > 7)
+					{
+					springenemies.push(new SpringEnemy());
+					console.log("New Spring Enemy Created! springenemies.length = " + springenemies.length);
+					audio.playBoingSound(.1);
+					}
+				}
+				
+				if(Math.random() < ROCKET_ENEMY_PROBABILITY_PER_SECOND/1000) {
+				
+					var rand = Math.random() * 10;
+					
+					if(rand > 5)
+					{
+					rocketenemies.push(new RocketEnemy());
+					console.log("New Rocket Enemy Created! rocketenemies.length = " + rocketenemies.length);
+					audio.playMissileSound(.1);
+					}
+				}
+				
+				if(Math.random() < TANK_ENEMY_PROBABILITY_PER_SECOND/1000 && ACTIVE_TANK == false) {
+					var rand = Math.random() * 10;
+					
+					if(rand > 8)
+					{
+					tankenemies.push(new TankEnemy());
+					console.log("New Tank Enemy Created! tankenemies.length = " + tankenemies.length);
+					ACTIVE_TANK = true;
+					}
+				}
+				
+				if(Math.random() < BULLET_PROBABILITY_PER_SECOND/1000 && ACTIVE_TANK == true) {
+					tankbullets.push(new TankBullet(TANK_X, TANK_Y, 0.15));
+					console.log("Tank fired! tankbullets.length = " + tankbullets.length);
+					audio.playBulletSound(.1);
+				}
+				
+				if(Math.random() < BEANS_PROBABILITY_PER_SECOND/1000) {
+					var rand = Math.random() * 10;
+					
+					if(rand > 9)
+					{
+					beans.push(new Bean());
+					console.log("New Bean Created! beans.length = " + beans.length);
+					}
+				}
+				
+				if(Math.random() < PENCILS_PROBABILITY_PER_SECOND/1000) {
+					var rand = Math.random() * 10;
+					
+					if(rand > 8)
+					{
+					pencils.push(new Health());
+					console.log("New Pencil Created! pencils.length = " + pencils.length);
+					}
+				}
+				
+				
+				if(ACTIVE_TANK == true)
+				{
+				TANK_X = tankenemies[0].x;
+				TANK_Y = tankenemies[0].y;
+				}
+				
+				if(healthbar == 5)
+				{
+				heartone.x = 100;
+				hearttwo.x = 100;
+				heartthree.x = 100;
+				heartfour.x = 100;
+				heartfive.x = 100;
+				}
+				
+				if(healthbar == 4)
+				{
+				heartone.x = 100;
+				hearttwo.x = 100;
+				heartthree.x = 100;
+				heartfour.x = 100;
+				}
+				
+				if(healthbar == 3)
+				{
+				heartone.x = 100;
+				hearttwo.x = 100;
+				heartthree.x = 100;
+				}
+				
+				if(healthbar == 2)
+				{
+				heartone.x = 100;
+				hearttwo.x = 100;
+				}
+				
+				if(healthbar == 1)
+				{
+				heartone.x = 100;
+				}
+		}
+		function collides(a, b) {
+				return a.x < b.x + b.width &&
+				a.x + a.width > b.x &&
+				a.y < b.y + b.height &&
+				a.y + a.height > b.y;
+				}
+				
+				function handleCollisions() {
+				
+				//BIg Kurt Collisions
+				springenemies.forEach(function(springenemy) {
+				if (collides(springenemy, bigk)) {
+					springenemy.explode();
+					healthbar--;
+					
+					if(healthbar == 4)
+					{
+					heartfive.x = -200;
+					}
+					
+					if(healthbar == 3)
+					{
+					heartfour.x = -200;
+					}
+					
+					if(healthbar == 2)
+					{
+					heartthree.x = -200;
+					}
+					
+					if(healthbar == 1)
+					{
+					hearttwo.x = -200;
+					}
+					
+					if(healthbar == 0)
+					{
+					heartone.x = -200;
+					//GAMEOVER
+					audio.playGameOver(.1);
+					gameOver();
+					}
+					
+					if(healthbar > 0)
+					{
+					var rand = Math.floor(Math.random() * 4);
+					
+					if(rand == 0)
+					{
+					audio.playHurtOne(.1);
+					}
+					
+					if(rand == 1)
+					{
+					audio.playHurtTwo(.1);
+					}
+					
+					if(rand == 2)
+					{
+					audio.playHurtThree(.1);
+					}
+					
+					if(rand == 3)
+					{
+					audio.playHurtFour(.1);
+					}
+					}
+					
+					
+				    }
+				});
+				
+				rocketenemies.forEach(function(rocketenemy) {
+				if (collides(rocketenemy, bigk)) {
+					rocketenemy.explode();
+					healthbar--;
+					
+					if(healthbar == 4)
+					{
+					heartfive.x = -200;
+					}
+					
+					if(healthbar == 3)
+					{
+					heartfour.x = -200;
+					}
+					
+					if(healthbar == 2)
+					{
+					heartthree.x = -200;
+					}
+					
+					if(healthbar == 1)
+					{
+					hearttwo.x = -200;
+					}
+					
+					if(healthbar == 0)
+					{
+					heartone.x = -200;
+					//GAMEOVER
+					audio.playGameOver(.1);
+					gameOver();
+					}
+					
+					if(healthbar > 0)
+					{
+					var rand = Math.floor(Math.random() * 4);
+					
+					if(rand == 0)
+					{
+					audio.playHurtOne(.1);
+					}
+					
+					if(rand == 1)
+					{
+					audio.playHurtTwo(.1);
+					}
+					
+					if(rand == 2)
+					{
+					audio.playHurtThree(.1);
+					}
+					
+					if(rand == 3)
+					{
+					audio.playHurtFour(.1);
+					}
+					}
+					
+				    }
+					
+					
+				});
+				
+				tankbullets.forEach(function(tankbullet) {
+				if (collides(tankbullet, bigk)) {
+					tankbullet.explode();
+					healthbar--;
+					
+					if(healthbar == 4)
+					{
+					heartfive.x = -200;
+					}
+					
+					if(healthbar == 3)
+					{
+					heartfour.x = -200;
+					}
+					
+					if(healthbar == 2)
+					{
+					heartthree.x = -200;
+					}
+					
+					if(healthbar == 1)
+					{
+					hearttwo.x = -200;
+					}
+					
+					if(healthbar < 1)
+					{
+					heartone.x = -200;
+					//GAMEOVER
+					audio.playGameOver(.1);
+					gameOver();
+					}
+					
+					if(healthbar > 0)
+					{
+					var rand = Math.floor(Math.random() * 4);
+					
+					if(rand == 0)
+					{
+					audio.playHurtOne(.1);
+					}
+					
+					if(rand == 1)
+					{
+					audio.playHurtTwo(.1);
+					}
+					
+					if(rand == 2)
+					{
+					audio.playHurtThree(.1);
+					}
+					
+					if(rand == 3)
+					{
+					audio.playHurtFour(.1);
+					}
+					}
+					
+				    }
+					
+					
+				});
+				
+				beans.forEach(function(bean) {
+				if (collides(bean, bigk)) {
+					bean.explode();
+					BEANSCORE++;
+					var rand = Math.floor(Math.random() * 2);
+					
+					if(rand == 0)
+					{
+					audio.playFartOne(.1);
+					}
+					
+					if(rand == 1)
+					{
+					audio.playFartTwo(.1);
+					}
+				
+					
+				    }
+					
+					
+				});
+				
+				pencils.forEach(function(health) {
+				if (collides(health, bigk)) {
+					health.explode();
+					if(healthbar < 5 && healthbar > 0)
+					{
+					healthbar++;
+					}
+					audio.playHeartSound(.1);
+				    }
+					
+					
+				});
+				
+				//Hamm Collisions
+				springenemies.forEach(function(springenemy) {
+				if (collides(springenemy, hamm)) {
+					springenemy.explode();
+					
+					//make eraser sound!
+					audio.playEraserSound(.1);
+					SCORE += 2;
+					}
+					
+				});
+				
+				rocketenemies.forEach(function(rocketenemy) {
+				if (collides(rocketenemy, hamm)) {
+					rocketenemy.explode();
+					
+					//make eraser sound!
+					audio.playEraserSound(.1);
+					SCORE += 2;
+					}
+					
+				});
+				
+				tankenemies.forEach(function(tankenemy) {
+				if (collides(tankenemy, hamm)) {
+					tankenemy.explode();
+					
+					//make eraser sound!
+					audio.playEraserSound(.1);
+					SCORE += 2;
+					}
+					
+				});
+				
+				beans.forEach(function(bean) {
+				if (collides(bean, hamm)) {
+					bean.explode();
+					
+					//make eraser sound!
+					audio.playEraserSound(.1);
+					}
+					
+				});
+				
+				}
+
+		function drawSprites(){
+		//draw bigk
+		bigk.draw();
+		hamm.draw();
+		pencil.draw();
+		
+		//healthbar
+		heartone.draw();
+		hearttwo.draw();
+		heartthree.draw();
+		heartfour.draw();
+		heartfive.draw();
+		
+		springenemies.forEach(function(springenemy) {
+					springenemy.draw(ctx);
+				});
+				
+		rocketenemies.forEach(function(rocketenemy) {
+					rocketenemy.draw(ctx);
+			});
+		
+		tankenemies.forEach(function(tankenemy) {
+					tankenemy.draw(ctx);
+			});
+			
+		tankbullets.forEach(function(tankbullet) {
+					tankbullet.draw(ctx);
+			});
+			
+		beans.forEach(function(bean) {
+					bean.draw(ctx);
+			});
+		
+		pencils.forEach(function(health) {
+					health.draw(ctx);
+			});
+		
+		}
+		
+		function drawBackground(){
+		//ctx.fillRect(0,0,CANVAS_WIDTH,CANVAS_HEIGHT);
+		ctx.drawImage(images["backgroundImage"], 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+		}
+		
+		function drawMainMenu(){
+		ctx.drawImage(images["logoImage"], 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+		}
+		
+		function gameOver(){
+			ACTIVE_TANK = false;
+			if((SCORE * BEANSCORE) > HIGHSCORE)
+			{
+				HIGHSCORE = SCORE * BEANSCORE;
+			}
+			gameStarted = false;
+			onMenu = true;
+			healthbar = 5;
+
+			for(var i = 0; i < springenemies.length; i++)
+			{
+			springenemies.pop(i);
+			}
+			
+			for(var j = 0; j < rocketenemies.length; j++)
+			{
+			rocketenemies.pop(j);
+			}
+			
+			for(var k = 0; k < tankenemies.length; k++)
+			{
+			tankenemies.pop(k);
+			}
+			
+			for(var l = 0; l < tankbullets.length; l++)
+			{
+			tankbullets.pop(l);
+			}
+			
+			for(var m = 0; m < beans.length; m++)
+			{
+			beans.pop(m);
+			}
+			
+			for(var n = 0; n < pencils.length; n++)
+			{
+			pencils.pop(n);
+			}
+			
+			init();
+		}
+</script>
+</head>
+<body>
+	<h1>Big K and the Mighty Hamm!</h1>
+	<canvas>
+		<div style="font-family: 'Shadows Into Light', cursive;"></div>
+		Get a real browser!
+	</canvas>
+</body>
+</html>

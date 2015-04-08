@@ -1,0 +1,31 @@
+body {
+    margin-left: auto;
+	font-family: 'Shadows Into Light', cursive;
+    margin-right: auto;
+    min-width: 1000px;
+    width: 1000px;
+	background-image: url("../images/websitebackground.jpg");
+    background-repeat: repeat;
+}
+h1 {
+	text-align:center;
+	font-size:40px;
+	text-align:center;
+	margin-right:auto;
+	margin-left:auto;
+	width:600px;
+	height:70px;
+	background-image: url("../images/paperbackground.png");
+    background-repeat: repeat;
+}
+h2 {
+	text-align:center;
+}
+h3 {
+	text-align:center;
+	margin-right:auto;
+	margin-left:auto;
+	width:400px;
+	background-image: url("../images/paperbackground.png");
+    background-repeat: repeat;
+}
